@@ -1,0 +1,111 @@
+version: '3.8'
+
+services:
+  # Redis for queue management
+  redis:
+    image: redis:7-alpine
+    container_name: claude-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - claude-network
+
+  # PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: claude-postgres-dev
+    environment:
+      POSTGRES_USER: claude_user
+      POSTGRES_PASSWORD: claude_db_secure_pwd_2024_12_27
+      POSTGRES_DB: claude_api
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claude_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - claude-network
+
+  # Simple test worker (without Claude CLI for now)
+  test-worker:
+    build:
+      context: ./docker/claude-worker
+      dockerfile: Dockerfile
+    container_name: claude-test-worker
+    environment:
+      WORKER_ID: test-worker
+      WORKER_PORT: 4001
+      ACCOUNT_EMAIL: test@example.com
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_db_secure_pwd_2024_12_27@postgres:5432/claude_api
+    volumes:
+      - ./docker/claude-worker:/app
+    ports:
+      - "4001:4001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - claude-network
+    restart: unless-stopped
+
+  # Orchestrator - Load balancer
+  orchestrator:
+    build:
+      context: ./docker/orchestrator
+      dockerfile: Dockerfile
+    container_name: claude-orchestrator-dev
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_db_secure_pwd_2024_12_27@postgres:5432/claude_api
+      JWT_SECRET: jwt_secret_key_change_this_to_random_string_abc123xyz789
+      # Single worker for testing
+      WORKERS: |
+        [
+          {"id": "test-worker", "url": "http://test-worker:4001", "weight": 1}
+        ]
+      # Rate limiting
+      RATE_LIMITS: |
+        {
+          "default": {"requests": 100, "window": "1h"}
+        }
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      - postgres
+      - test-worker
+    networks:
+      - claude-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+volumes:
+  redis_data:
+  postgres_data:
+
+networks:
+  claude-network:
+    driver: bridge

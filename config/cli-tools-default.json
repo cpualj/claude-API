@@ -1,0 +1,214 @@
+[
+  {
+    "id": "claude-code",
+    "name": "Claude Code",
+    "command": "claude",
+    "description": "Anthropic Claude Code CLI - $200/month subscription",
+    "enabled": true,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 120000
+    },
+    "args": {
+      "template": [],
+      "streaming": true,
+      "streamFlag": "--stream",
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "stdin",
+      "outputParser": "raw"
+    },
+    "session": {
+      "supported": true,
+      "persistProcess": false
+    },
+    "auth": {
+      "required": true,
+      "type": "file",
+      "authFile": "/root/.claude/config.json",
+      "checkCommand": "claude --version"
+    }
+  },
+  {
+    "id": "openai-gpt",
+    "name": "OpenAI GPT CLI",
+    "command": "openai",
+    "description": "OpenAI official CLI tool",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 60000
+    },
+    "args": {
+      "template": ["api", "completions.create", "-m", "gpt-4"],
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "arg",
+      "outputParser": "json"
+    },
+    "auth": {
+      "required": true,
+      "type": "env",
+      "envVars": ["OPENAI_API_KEY"]
+    }
+  },
+  {
+    "id": "gemini-cli",
+    "name": "Google Gemini",
+    "command": "gemini",
+    "description": "Google Gemini AI CLI",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 60000
+    },
+    "args": {
+      "template": ["chat"],
+      "streaming": true,
+      "streamFlag": "--stream"
+    },
+    "io": {
+      "inputMethod": "stdin",
+      "outputParser": "raw"
+    },
+    "auth": {
+      "required": true,
+      "type": "env",
+      "envVars": ["GEMINI_API_KEY"]
+    }
+  },
+  {
+    "id": "ollama",
+    "name": "Ollama Local",
+    "command": "ollama",
+    "description": "Local LLM via Ollama",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 180000
+    },
+    "args": {
+      "template": ["run", "llama2"],
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "stdin",
+      "outputParser": "raw"
+    },
+    "session": {
+      "supported": true,
+      "persistProcess": true
+    },
+    "auth": {
+      "required": false
+    }
+  },
+  {
+    "id": "deepseek",
+    "name": "DeepSeek Coder",
+    "command": "deepseek",
+    "description": "DeepSeek coding assistant",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 90000
+    },
+    "args": {
+      "template": ["--model", "deepseek-coder"],
+      "streaming": true,
+      "streamFlag": "--stream"
+    },
+    "io": {
+      "inputMethod": "stdin",
+      "outputParser": "raw"
+    },
+    "auth": {
+      "required": true,
+      "type": "env",
+      "envVars": ["DEEPSEEK_API_KEY"]
+    }
+  },
+  {
+    "id": "github-copilot",
+    "name": "GitHub Copilot CLI",
+    "command": "gh",
+    "description": "GitHub Copilot in the command line",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "timeout": 60000
+    },
+    "args": {
+      "template": ["copilot", "suggest"],
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "arg",
+      "outputParser": "raw"
+    },
+    "auth": {
+      "required": true,
+      "type": "oauth",
+      "checkCommand": "gh auth status"
+    }
+  },
+  {
+    "id": "custom-python",
+    "name": "Custom Python Script",
+    "command": "python",
+    "description": "Execute custom Python scripts",
+    "enabled": false,
+    "execution": {
+      "type": "spawn",
+      "shell": false,
+      "cwd": "/app/scripts",
+      "timeout": 30000
+    },
+    "args": {
+      "template": ["/app/scripts/custom_ai.py"],
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "arg",
+      "outputParser": "json"
+    },
+    "auth": {
+      "required": false
+    }
+  },
+  {
+    "id": "shell-command",
+    "name": "Shell Command",
+    "command": "sh",
+    "description": "Execute arbitrary shell commands (use with caution)",
+    "enabled": false,
+    "execution": {
+      "type": "shell",
+      "shell": true,
+      "timeout": 30000
+    },
+    "args": {
+      "template": ["-c"],
+      "userInputPosition": "end"
+    },
+    "io": {
+      "inputMethod": "arg",
+      "outputParser": "raw"
+    },
+    "auth": {
+      "required": false
+    },
+    "limits": {
+      "maxConcurrent": 1,
+      "requestsPerMinute": 10
+    }
+  }
+]

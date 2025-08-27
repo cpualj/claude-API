@@ -1,0 +1,23 @@
+{
+  "name": "claude-api-worker",
+  "version": "1.0.0",
+  "description": "Claude API Worker Node",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node worker-updated.js",
+    "dev": "nodemon worker-updated.js",
+    "test": "node test-claude.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.20.1",
+    "socket.io": "^4.6.2",
+    "pg": "^8.11.3",
+    "redis": "^4.6.10",
+    "dotenv": "^16.3.1",
+    "uuid": "^9.0.1",
+    "winston": "^3.11.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

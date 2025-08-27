@@ -1,0 +1,42 @@
+# Worker Dockerfile - 完整版
+FROM node:20-slim
+
+# 安装必要的系统依赖
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    python3 \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# ===== Claude CLI 安装方案 =====
+
+# 方案 1: 使用 NPM 安装官方 Claude CLI（如果可用）
+# RUN npm install -g @anthropic-ai/claude-code
+
+# 方案 2: 使用 Python 版本的 Claude SDK
+RUN pip3 install anthropic claude-cli
+
+# 方案 3: 创建自定义 Claude CLI 封装
+COPY claude-wrapper.py /usr/local/bin/claude
+RUN chmod +x /usr/local/bin/claude
+
+# 复制 package.json
+COPY package*.json ./
+
+# 安装 Node.js 依赖
+RUN npm ci
+
+# 复制源代码
+COPY . .
+
+# 创建必要的目录
+RUN mkdir -p /app/.claude /app/sessions /app/logs
+
+# 暴露端口
+EXPOSE 3002
+
+# 启动 Worker
+CMD ["node", "worker.js"]

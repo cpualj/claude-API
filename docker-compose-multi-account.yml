@@ -1,0 +1,274 @@
+version: '3.8'
+
+services:
+  # Redis for queue management and load balancing
+  redis:
+    image: redis:7-alpine
+    container_name: claude-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - claude-network
+
+  # PostgreSQL for persistent storage
+  postgres:
+    image: postgres:15-alpine
+    container_name: claude-postgres
+    environment:
+      POSTGRES_USER: claude_user
+      POSTGRES_PASSWORD: claude_password
+      POSTGRES_DB: claude_api
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U claude_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - claude-network
+
+  # Claude Worker 1 - Account 1
+  claude-worker-account1:
+    build:
+      context: ./docker/claude-worker
+      dockerfile: Dockerfile
+    container_name: claude-worker-account1
+    environment:
+      WORKER_ID: account1
+      WORKER_PORT: 4001
+      ACCOUNT_EMAIL: ${CLAUDE_EMAIL_1}
+      CLAUDE_CONFIG_PATH: /app/.claude/account1
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_password@postgres:5432/claude_api
+    volumes:
+      - ./claude-configs/account1:/app/.claude/account1
+      - ./docker/claude-worker:/app
+    ports:
+      - "4001:4001"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - claude-network
+    restart: unless-stopped
+    # Resource limits to prevent one account from consuming too much
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Claude Worker 2 - Account 2  
+  claude-worker-account2:
+    build:
+      context: ./docker/claude-worker
+      dockerfile: Dockerfile
+    container_name: claude-worker-account2
+    environment:
+      WORKER_ID: account2
+      WORKER_PORT: 4002
+      ACCOUNT_EMAIL: ${CLAUDE_EMAIL_2}
+      CLAUDE_CONFIG_PATH: /app/.claude/account2
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_password@postgres:5432/claude_api
+    volumes:
+      - ./claude-configs/account2:/app/.claude/account2
+      - ./docker/claude-worker:/app
+    ports:
+      - "4002:4002"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - claude-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Claude Worker 3 - Account 3
+  claude-worker-account3:
+    build:
+      context: ./docker/claude-worker
+      dockerfile: Dockerfile
+    container_name: claude-worker-account3
+    environment:
+      WORKER_ID: account3
+      WORKER_PORT: 4003
+      ACCOUNT_EMAIL: ${CLAUDE_EMAIL_3}
+      CLAUDE_CONFIG_PATH: /app/.claude/account3
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_password@postgres:5432/claude_api
+    volumes:
+      - ./claude-configs/account3:/app/.claude/account3
+      - ./docker/claude-worker:/app
+    ports:
+      - "4003:4003"
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    networks:
+      - claude-network
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+    profiles:
+      - multi-account # Optional third account
+
+  # Orchestrator - Load balancer and queue manager
+  orchestrator:
+    build:
+      context: ./docker/orchestrator
+      dockerfile: Dockerfile
+    container_name: claude-orchestrator
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://claude_user:claude_password@postgres:5432/claude_api
+      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key}
+      # Worker URLs for health checks and routing
+      WORKERS: |
+        [
+          {"id": "account1", "url": "http://claude-worker-account1:4001", "weight": 1},
+          {"id": "account2", "url": "http://claude-worker-account2:4002", "weight": 1},
+          {"id": "account3", "url": "http://claude-worker-account3:4003", "weight": 1}
+        ]
+      # Rate limiting per account
+      RATE_LIMITS: |
+        {
+          "account1": {"requests": 100, "window": "1h"},
+          "account2": {"requests": 100, "window": "1h"},
+          "account3": {"requests": 100, "window": "1h"}
+        }
+    ports:
+      - "3000:3000"
+    depends_on:
+      - redis
+      - postgres
+      - claude-worker-account1
+      - claude-worker-account2
+    networks:
+      - claude-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend.Dockerfile
+    container_name: claude-frontend
+    environment:
+      VITE_API_URL: http://orchestrator:3000
+      VITE_API_BASE_URL: http://orchestrator:3000/api
+      VITE_WS_URL: http://orchestrator:3000
+    volumes:
+      - ./src:/app/src:ro
+      - ./public:/app/public:ro
+    ports:
+      - "3030:3030"
+    depends_on:
+      orchestrator:
+        condition: service_healthy
+    networks:
+      - claude-network
+
+  # Nginx for production (optional)
+  nginx:
+    image: nginx:alpine
+    container_name: claude-nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-multi.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - frontend
+      - orchestrator
+    networks:
+      - claude-network
+    profiles:
+      - production
+
+  # Monitoring - Grafana (optional)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: claude-grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    ports:
+      - "3033:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+    networks:
+      - claude-network
+    profiles:
+      - monitoring
+
+  # Monitoring - Prometheus (optional)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: claude-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+    networks:
+      - claude-network
+    profiles:
+      - monitoring
+
+volumes:
+  redis_data:
+  postgres_data:
+  grafana_data:
+  prometheus_data:
+
+networks:
+  claude-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
