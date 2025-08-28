@@ -5,7 +5,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
-    setupFiles: ['./tests/setup.js'],
+    setupFiles: ['./tests/setup.js', './tests/setup/database-mock.js'],
     testTimeout: 30000,
     hookTimeout: 30000,
     teardownTimeout: 10000,

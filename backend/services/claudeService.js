@@ -1,5 +1,13 @@
-import { spawn } from 'child_process';
+import { spawn, exec } from 'child_process';
 import EventEmitter from 'events';
+import { promisify } from 'util';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const execAsync = promisify(exec);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 class ClaudeService extends EventEmitter {
   constructor() {
@@ -22,21 +30,19 @@ class ClaudeService extends EventEmitter {
     } = options;
 
     return new Promise((resolve, reject) => {
-      const args = [
-        '--print',  // Use print mode for non-interactive output
-        message
-      ];
-
-      // Note: Claude CLI doesn't have --max-tokens or --temperature options
-
-      const claudeProcess = spawn('claude', args, {
+      // Use stdin to send the message
+      const claudeProcess = spawn('claude', [], {
         shell: true,
-        env: { ...process.env }
+        stdio: ['pipe', 'pipe', 'pipe']
       });
 
       let output = '';
       let error = '';
       const startTime = Date.now();
+
+      // Send the message via stdin
+      claudeProcess.stdin.write(message);
+      claudeProcess.stdin.end();
 
       // Handle streaming
       if (stream) {
@@ -59,17 +65,24 @@ class ClaudeService extends EventEmitter {
         error += data.toString();
       });
 
+      // Set a timeout for the process
+      const timeout = setTimeout(() => {
+        claudeProcess.kill('SIGKILL');
+        reject(new Error('Claude CLI timeout after 30 seconds'));
+      }, 30000);
+
       claudeProcess.on('close', (code) => {
+        clearTimeout(timeout);
         const endTime = Date.now();
         const duration = endTime - startTime;
 
-        if (code !== 0) {
+        if (code !== 0 && code !== null) {
           reject(new Error(`Claude process exited with code ${code}: ${error}`));
         } else {
           // Parse the output and create response
           const response = {
             id: `msg-${Date.now()}`,
-            content: output.trim(),
+            content: output.trim() || 'No response received',
             usage: {
               inputTokens: this.estimateTokens(message),
               outputTokens: this.estimateTokens(output),
@@ -86,12 +99,74 @@ class ClaudeService extends EventEmitter {
       });
 
       claudeProcess.on('error', (err) => {
+        clearTimeout(timeout);
         reject(new Error(`Failed to start Claude process: ${err.message}`));
       });
 
       // Store process for potential cancellation
       this.activeProcesses.set(sessionId, claudeProcess);
     });
+  }
+
+  /**
+   * Alternative method using temp file
+   * @param {string} message - The message to send
+   * @param {object} options - Options for the request
+   * @returns {Promise<object>} - The response from Claude
+   */
+  async sendMessageViaFile(message, options = {}) {
+    const {
+      sessionId = 'default',
+      stream = false
+    } = options;
+
+    try {
+      const startTime = Date.now();
+      
+      // Create a temporary file with the message
+      const tempDir = path.join(__dirname, '..', 'temp');
+      await fs.mkdir(tempDir, { recursive: true });
+      
+      const tempFile = path.join(tempDir, `claude-input-${Date.now()}.txt`);
+      await fs.writeFile(tempFile, message, 'utf8');
+      
+      // Use claude with the file
+      const { stdout, stderr } = await execAsync(`claude < "${tempFile}"`, {
+        timeout: 30000,
+        maxBuffer: 10 * 1024 * 1024 // 10MB buffer
+      });
+      
+      // Clean up temp file
+      await fs.unlink(tempFile).catch(() => {});
+      
+      const endTime = Date.now();
+      const duration = endTime - startTime;
+      
+      if (stderr && !stdout) {
+        throw new Error(`Claude error: ${stderr}`);
+      }
+      
+      const response = {
+        id: `msg-${Date.now()}`,
+        content: stdout.trim() || 'No response received',
+        role: 'assistant',
+        usage: {
+          inputTokens: this.estimateTokens(message),
+          outputTokens: this.estimateTokens(stdout),
+          totalTokens: this.estimateTokens(message) + this.estimateTokens(stdout)
+        },
+        model: 'claude-3-opus-20240229',
+        sessionId,
+        duration,
+        timestamp: new Date()
+      };
+      
+      return response;
+      
+    } catch (error) {
+      console.error('Claude file method error:', error);
+      throw error;
+    }
   }
 
   /**
@@ -113,7 +188,8 @@ class ClaudeService extends EventEmitter {
     const fullMessage = contextString + `User: ${message}`;
     
     try {
-      const response = await this.sendMessage(fullMessage, options);
+      // Try the file method first as it might be more reliable
+      const response = await this.sendMessageViaFile(fullMessage, options);
       
       // Add role to response
       response.role = 'assistant';
@@ -121,7 +197,16 @@ class ClaudeService extends EventEmitter {
       return response;
     } catch (error) {
       console.error('Claude chat error:', error);
-      throw error;
+      
+      // If Claude fails, try the direct method
+      try {
+        const response = await this.sendMessage(fullMessage, options);
+        response.role = 'assistant';
+        return response;
+      } catch (fallbackError) {
+        console.error('Claude fallback error:', fallbackError);
+        throw error; // Throw original error
+      }
     }
   }
 
@@ -154,25 +239,13 @@ class ClaudeService extends EventEmitter {
    * @returns {Promise<boolean>}
    */
   async checkAvailability() {
-    return new Promise((resolve) => {
-      const checkProcess = spawn('claude', ['--version'], {
-        shell: true
-      });
-
-      checkProcess.on('close', (code) => {
-        resolve(code === 0);
-      });
-
-      checkProcess.on('error', () => {
-        resolve(false);
-      });
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        checkProcess.kill();
-        resolve(false);
-      }, 5000);
-    });
+    try {
+      const { stdout } = await execAsync('claude --version', { timeout: 5000 });
+      return stdout.includes('Claude');
+    } catch (error) {
+      console.error('Claude availability check failed:', error.message);
+      return false;
+    }
   }
 
   /**
@@ -180,29 +253,13 @@ class ClaudeService extends EventEmitter {
    * @returns {Promise<string>}
    */
   async getVersion() {
-    return new Promise((resolve, reject) => {
-      const versionProcess = spawn('claude', ['--version'], {
-        shell: true
-      });
-
-      let output = '';
-
-      versionProcess.stdout.on('data', (data) => {
-        output += data.toString();
-      });
-
-      versionProcess.on('close', (code) => {
-        if (code === 0) {
-          resolve(output.trim());
-        } else {
-          reject(new Error('Failed to get Claude version'));
-        }
-      });
-
-      versionProcess.on('error', (err) => {
-        reject(err);
-      });
-    });
+    try {
+      const { stdout } = await execAsync('claude --version', { timeout: 5000 });
+      return stdout.trim();
+    } catch (error) {
+      console.error('Failed to get Claude version:', error);
+      throw error;
+    }
   }
 }
 

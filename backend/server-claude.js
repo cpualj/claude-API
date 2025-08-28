@@ -4,7 +4,12 @@ import helmet from 'helmet';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import claudeService from './services/claudeService.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Load environment variables
 dotenv.config();
@@ -25,6 +30,9 @@ app.use(cors({
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve static files from public directory
+app.use(express.static(path.join(__dirname, 'public')));
 
 // Socket.io setup
 const io = new Server(httpServer, {
@@ -56,9 +64,26 @@ const authenticate = (req, res, next) => {
 };
 
 // Check Claude CLI availability on startup
-// Temporarily force mock mode for testing
 let claudeAvailable = false;
-console.log('⚠️ Using mock mode for testing - Claude integration temporarily disabled');
+
+// Check if Claude CLI is available
+claudeService.checkAvailability().then(available => {
+  claudeAvailable = available;
+  if (available) {
+    console.log('✅ Claude CLI is available - using real Claude integration');
+    claudeService.getVersion().then(version => {
+      console.log(`📌 Claude CLI version: ${version}`);
+    }).catch(() => {
+      console.log('📌 Claude CLI version: unknown');
+    });
+  } else {
+    console.log('⚠️ Claude CLI not found - falling back to mock mode');
+    console.log('💡 To enable Claude integration, ensure Claude CLI is installed and accessible');
+  }
+}).catch(err => {
+  console.error('Error checking Claude CLI availability:', err);
+  console.log('⚠️ Falling back to mock mode');
+});
 
 // Routes
 app.get('/health', async (req, res) => {
@@ -120,7 +145,10 @@ app.post('/api/chat', authenticate, async (req, res) => {
   const { message, sessionId = 'default', stream = false, context = [] } = req.body;
   
   try {
-    if (claudeAvailable) {
+    // Check if we should use mock mode
+    const useMock = process.env.USE_MOCK_CLAUDE === 'true' || !claudeAvailable;
+    
+    if (!useMock && claudeAvailable) {
       // Use real Claude CLI
       if (stream) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -160,6 +188,7 @@ app.post('/api/chat', authenticate, async (req, res) => {
       const mockResponse = {
         id: `msg-${Date.now()}`,
         content: `[Mock Mode] Response to: "${message}"`,
+        role: 'assistant',
         usage: {
           inputTokens: message.length,
           outputTokens: 100,
