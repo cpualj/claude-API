@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Claude CLI Chat Test</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .chat-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            width: 100%;
+            max-width: 800px;
+            height: 600px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+        .chat-header h1 {
+            font-size: 24px;
+            margin-bottom: 5px;
+        }
+        .chat-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .message {
+            margin-bottom: 20px;
+            display: flex;
+            align-items: flex-start;
+        }
+        .message.user {
+            justify-content: flex-end;
+        }
+        .message-content {
+            max-width: 70%;
+            padding: 15px;
+            border-radius: 15px;
+            position: relative;
+        }
+        .message.user .message-content {
+            background: #667eea;
+            color: white;
+        }
+        .message.assistant .message-content {
+            background: white;
+            color: #333;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .message-label {
+            font-size: 12px;
+            margin-bottom: 5px;
+            opacity: 0.7;
+        }
+        .chat-input {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #eee;
+        }
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+        #messageInput {
+            flex: 1;
+            padding: 12px 20px;
+            border: 2px solid #e0e0e0;
+            border-radius: 25px;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+        #messageInput:focus {
+            border-color: #667eea;
+        }
+        #sendButton {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: transform 0.3s;
+        }
+        #sendButton:hover {
+            transform: scale(1.05);
+        }
+        #sendButton:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .status {
+            padding: 10px;
+            background: #f0f0f0;
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+        }
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+        }
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 Claude CLI Chat Test</h1>
+            <p>Testing multiple CLI instances with concurrent processing</p>
+        </div>
+        
+        <div class="status" id="status">
+            Connecting to CLI Pool Service...
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <!-- Messages will appear here -->
+        </div>
+        
+        <div class="chat-input">
+            <div class="input-group">
+                <input 
+                    type="text" 
+                    id="messageInput" 
+                    placeholder="Type your message here..."
+                    autocomplete="off"
+                    aria-label="Message input"
+                >
+                <button id="sendButton" aria-label="Send message">Send</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:3004/api/cli-pool';
+        let sessionId = null;
+        let messageCount = 0;
+
+        // Initialize
+        async function initialize() {
+            try {
+                const response = await fetch(`${API_URL}/health`);
+                const data = await response.json();
+                
+                if (data.success && data.healthy) {
+                    updateStatus(`Connected! Pool: ${data.details.poolSize} instances ready`, 'success');
+                } else if (!data.healthy) {
+                    updateStatus('CLI Pool not healthy, initializing...', 'error');
+                    await initializePool();
+                } else {
+                    updateStatus('CLI Pool not initialized', 'error');
+                    await initializePool();
+                }
+            } catch (error) {
+                updateStatus('Failed to connect to service', 'error');
+                console.error('Connection error:', error);
+            }
+        }
+
+        // Initialize pool if needed
+        async function initializePool() {
+            try {
+                const response = await fetch(`${API_URL}/initialize`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        minInstances: 2,
+                        maxInstances: 5
+                    })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    updateStatus(`Pool initialized with ${data.poolSize} instances`, 'success');
+                }
+            } catch (error) {
+                console.error('Initialization error:', error);
+            }
+        }
+
+        // Send message
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            const sendButton = document.getElementById('sendButton');
+            sendButton.disabled = true;
+            input.disabled = true;
+            
+            // Add user message to chat
+            addMessage(message, 'user');
+            input.value = '';
+            
+            // Show loading
+            updateStatus('Claude is thinking... <span class="loading"></span>', '');
+            
+            try {
+                const startTime = Date.now();
+                
+                const response = await fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        message,
+                        sessionId 
+                    })
+                });
+                
+                const data = await response.json();
+                const responseTime = Date.now() - startTime;
+                
+                if (data.success) {
+                    sessionId = data.sessionId || sessionId;
+                    // Extract content from response object
+                    const responseContent = typeof data.response === 'object' 
+                        ? (data.response.content || data.response.message || JSON.stringify(data.response))
+                        : data.response;
+                    
+                    addMessage(responseContent, 'assistant', {
+                        instanceId: data.response.instanceId || data.instanceId,
+                        duration: data.response.duration || data.duration || responseTime
+                    });
+                    updateStatus(`Response received in ${responseTime}ms (Instance: ${(data.response.instanceId || data.instanceId)?.split('-').pop()})`, 'success');
+                } else {
+                    updateStatus(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                console.error('Send error:', error);
+                updateStatus('Failed to send message', 'error');
+            } finally {
+                sendButton.disabled = false;
+                input.disabled = false;
+                input.focus();
+            }
+        }
+
+        // Add message to chat
+        function addMessage(content, role, metadata = {}) {
+            messageCount++;
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            messageDiv.id = `message-${messageCount}`;
+            
+            let label = role === 'user' ? 'You' : 'Claude';
+            if (metadata.instanceId) {
+                label += ` (${metadata.instanceId.split('-').pop()})`;
+            }
+            if (metadata.duration) {
+                label += ` - ${metadata.duration}ms`;
+            }
+            
+            messageDiv.innerHTML = `
+                <div class="message-content">
+                    <div class="message-label">${label}</div>
+                    <div>${escapeHtml(content)}</div>
+                </div>
+            `;
+            
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        }
+
+        // Update status
+        function updateStatus(text, type) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.innerHTML = text;
+            statusDiv.className = `status ${type}`;
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Event listeners
+        document.getElementById('sendButton').addEventListener('click', sendMessage);
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // Test concurrent messages
+        async function testConcurrent() {
+            updateStatus('Testing concurrent messages...', '');
+            
+            const messages = [
+                'What is 1 + 1?',
+                'What is 2 + 2?',
+                'What is 3 + 3?'
+            ];
+            
+            const promises = messages.map(msg => {
+                addMessage(msg, 'user');
+                return fetch(`${API_URL}/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: msg })
+                }).then(r => r.json());
+            });
+            
+            const startTime = Date.now();
+            const results = await Promise.all(promises);
+            const totalTime = Date.now() - startTime;
+            
+            results.forEach(data => {
+                if (data.success) {
+                    addMessage(data.response, 'assistant', {
+                        instanceId: data.instanceId,
+                        duration: data.duration
+                    });
+                }
+            });
+            
+            const instances = new Set(results.map(r => r.instanceId));
+            updateStatus(`Concurrent test: ${results.length} messages in ${totalTime}ms using ${instances.size} instances`, 'success');
+        }
+
+        // Add test button for concurrent testing
+        window.addEventListener('load', () => {
+            initialize();
+            
+            // Add concurrent test button
+            const header = document.querySelector('.chat-header');
+            const testBtn = document.createElement('button');
+            testBtn.textContent = '🚀 Test Concurrent';
+            testBtn.style.cssText = 'margin-top: 10px; padding: 8px 20px; background: white; color: #667eea; border: none; border-radius: 20px; cursor: pointer;';
+            testBtn.onclick = testConcurrent;
+            header.appendChild(testBtn);
+        });
+    </script>
+</body>
+</html>

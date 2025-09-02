@@ -1,13 +1,14 @@
+import io from 'socket.io-client';
 import { useState, useEffect } from 'react';
+
 import { 
   Box, 
   Chip, 
-  LinearProgress, 
+  Alert, 
+  Stack,
   Typography,
-  Alert,
-  Stack
+  LinearProgress
 } from '@mui/material';
-import io from 'socket.io-client';
 
 export default function QueueStatus({ sessionId }) {
   const [queueStatus, setQueueStatus] = useState(null);
@@ -16,7 +17,7 @@ export default function QueueStatus({ sessionId }) {
 
   useEffect(() => {
     // 连接 WebSocket
-    const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:3002');
+    const newSocket = io(process.env.REACT_APP_API_URL || 'http://localhost:3006');
     
     // 监听队列状态更新
     newSocket.on('queue-status', (status) => {

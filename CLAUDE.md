@@ -136,3 +136,27 @@ This project includes a Claude API wrapper system with:
 - Admin interface for managing CLI tools
 - WebSocket support for real-time communication
 - Multi-account load balancing support
+
+## Playwright MCP Best Practices for Large Pages
+When working with n8n or other complex web interfaces that return large DOM snapshots:
+
+### ✅ BEST: Use evaluate() method
+```javascript
+// Returns minimal data, avoids token limits
+await page.evaluate(() => {
+  // Direct DOM manipulation or simple data extraction
+  return 'simple result';
+});
+```
+
+### ❌ AVOID: snapshot() and complex click operations  
+```javascript
+// These can return 25000+ tokens and cause failures
+await page.snapshot();
+await page.click(...); // on complex pages
+```
+
+### 🎯 Debugging Strategy for Complex Workflows
+- Use evaluate() to extract specific error messages from DOM
+- Focus on getting exact error text rather than full page snapshots
+- For n8n workflows: extract log messages and error details directly from error panels

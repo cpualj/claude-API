@@ -1,18 +1,20 @@
 import { useState, useCallback } from 'react';
+
 import { 
   Box, 
   Card, 
+  Chip, 
   Stack, 
+  Alert, 
   Button, 
-  TextField, 
-  Typography, 
-  Alert,
-  CircularProgress,
   Divider,
-  Chip
+  TextField,
+  Typography,
+  CircularProgress
 } from '@mui/material';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+const SMART_CLAUDE_BASE = import.meta.env.VITE_SMART_CLAUDE_URL || 'http://localhost:3006';
 
 export default function ApiTestPage() {
   const [loading, setLoading] = useState(false);
@@ -106,6 +108,71 @@ export default function ApiTestPage() {
   const testUsage = () => testEndpoint('/api/usage');
   const testApiKeys = () => testEndpoint('/api/keys');
 
+  // Smart Claude API tests
+  const testSmartEndpoint = useCallback(async (endpoint, options = {}) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await fetch(`${SMART_CLAUDE_BASE}${endpoint}`, {
+        headers: {
+          'Content-Type': 'application/json',
+          ...options.headers
+        },
+        ...options
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || `HTTP ${response.status}`);
+      }
+      
+      setResults(prev => ({
+        ...prev,
+        [`SMART${endpoint}`]: { success: true, data, status: response.status }
+      }));
+      
+      return data;
+    } catch (err) {
+      const errorMsg = err.message || 'Smart Claude request failed';
+      setError(errorMsg);
+      setResults(prev => ({
+        ...prev,
+        [`SMART${endpoint}`]: { success: false, error: errorMsg }
+      }));
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  const testSmartHealth = () => testSmartEndpoint('/api/smart-claude/health');
+  const testSmartStats = () => testSmartEndpoint('/api/smart-claude/stats');
+  
+  const testSmartChat = () => testSmartEndpoint('/api/smart-claude/chat', {
+    method: 'POST',
+    body: JSON.stringify({
+      message: message || 'Hello Smart Claude!',
+      sessionId: `test-session-${Date.now()}`
+    })
+  });
+  
+  const testSmartBatch = () => testSmartEndpoint('/api/smart-claude/chat-batch', {
+    method: 'POST',
+    body: JSON.stringify({
+      messages: [
+        { message: 'What is 1+1?', sessionId: 'batch-1' },
+        { message: 'What is 2+2?', sessionId: 'batch-2' },
+        { message: 'What is 3+3?', sessionId: 'batch-3' }
+      ]
+    })
+  });
+  
+  const testSmartCleanup = () => testSmartEndpoint('/api/smart-claude/cleanup', {
+    method: 'POST'
+  });
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="h4" sx={{ mb: 3 }}>
@@ -115,9 +182,11 @@ export default function ApiTestPage() {
       <Stack spacing={3}>
         {/* Status */}
         <Card sx={{ p: 2 }}>
-          <Stack direction="row" spacing={2} alignItems="center">
+          <Stack direction="row" spacing={2} alignItems="center" flexWrap="wrap">
             <Typography variant="subtitle1">Backend URL:</Typography>
-            <Chip label={API_BASE} color="primary" />
+            <Chip label={API_BASE} color="primary" size="small" />
+            <Typography variant="subtitle1">Smart Claude:</Typography>
+            <Chip label={SMART_CLAUDE_BASE} color="secondary" size="small" />
             {token && (
               <>
                 <Typography variant="subtitle1">Token:</Typography>
@@ -198,6 +267,33 @@ export default function ApiTestPage() {
                 List API Keys
               </Button>
             </Stack>
+          </Stack>
+        </Card>
+
+        {/* Smart Claude Tests */}
+        <Card sx={{ p: 2 }}>
+          <Typography variant="h6" sx={{ mb: 2 }}>Smart Claude API (Port 3006)</Typography>
+          <Stack spacing={2}>
+            <Stack direction="row" spacing={2} flexWrap="wrap">
+              <Button variant="outlined" onClick={testSmartHealth} disabled={loading}>
+                Test Smart Health
+              </Button>
+              <Button variant="outlined" onClick={testSmartStats} disabled={loading}>
+                Get Smart Stats
+              </Button>
+              <Button variant="outlined" onClick={testSmartChat} disabled={loading}>
+                Test Smart Chat
+              </Button>
+              <Button variant="outlined" onClick={testSmartBatch} disabled={loading}>
+                Test Batch Processing
+              </Button>
+              <Button variant="outlined" onClick={testSmartCleanup} disabled={loading}>
+                Test Cleanup
+              </Button>
+            </Stack>
+            <Typography variant="caption" color="text.secondary">
+              Smart Claude features: Zero pre-allocation, intelligent recycling, session continuity
+            </Typography>
           </Stack>
         </Card>
 

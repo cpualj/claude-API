@@ -1,7 +1,8 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { it, vi, expect, describe, beforeEach } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+
 import CLIConfigList from './cli-config-list';
 import { fetchCLITools, deleteCLITool } from '../../api/cli-tools';
 
@@ -50,13 +51,11 @@ describe('CLIConfigList', () => {
     vi.clearAllMocks();
   });
 
-  const renderComponent = () => {
-    return render(
+  const renderComponent = () => render(
       <QueryClientProvider client={queryClient}>
         <CLIConfigList />
       </QueryClientProvider>
     );
-  };
 
   describe('Loading and Display', () => {
     it('should show loading state initially', () => {

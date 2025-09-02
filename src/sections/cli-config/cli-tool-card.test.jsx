@@ -1,6 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { render, screen } from '@testing-library/react';
+import { it, vi, expect, describe, beforeEach } from 'vitest';
+
 import CLIToolCard from './cli-tool-card';
 
 describe('CLIToolCard', () => {

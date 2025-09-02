@@ -3,9 +3,12 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Box,
   Card,
+  Chip,
   Table,
+  Stack,
   Button,
   Switch,
+  Tooltip,
   TableRow,
   TableBody,
   TableCell,
@@ -13,16 +16,13 @@ import {
   IconButton,
   Typography,
   TableContainer,
-  Chip,
-  Stack,
-  Tooltip,
 } from '@mui/material';
 
 import { Iconify } from 'src/components/iconify';
 import { Scrollbar } from 'src/components/scrollbar';
 
-import { CLIConfigDialog } from './cli-config-dialog';
 import { CLITestDialog } from './cli-test-dialog';
+import { CLIConfigDialog } from './cli-config-dialog';
 
 // ----------------------------------------------------------------------
 

@@ -1,27 +1,27 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import {
-  Box,
-  Card,
-  Stack,
-  Paper,
-  Button,
-  TextField,
-  Typography,
-  Avatar,
-  IconButton,
-  Divider,
-  CircularProgress,
-  Alert,
-  Chip,
-  Container
-} from '@mui/material';
+import { useRef, useState, useEffect } from 'react';
+
 import SendIcon from '@mui/icons-material/Send';
-import SmartToyIcon from '@mui/icons-material/SmartToy';
 import PersonIcon from '@mui/icons-material/Person';
 import DeleteIcon from '@mui/icons-material/Delete';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
+import {
+  Box,
+  Card,
+  Chip,
+  Stack,
+  Paper,
+  Alert,
+  Button,
+  Avatar,
+  TextField,
+  Container,
+  Typography,
+  IconButton,
+  CircularProgress
+} from '@mui/material';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3006';
 
 export default function ChatPage() {
   const [messages, setMessages] = useState([]);
@@ -50,38 +50,20 @@ export default function ChatPage() {
 
   const initializeSession = async () => {
     try {
-      // Auto login for development
-      const loginResponse = await fetch(`${API_URL}/api/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: 'chat@example.com',
-          password: 'chat123'
-        })
-      });
+      // Test Smart Claude API health
+      const healthResponse = await fetch(`${API_URL}/api/smart-claude/health`);
+      if (!healthResponse.ok) {
+        throw new Error('Smart Claude API is not available');
+      }
 
-      const loginData = await loginResponse.json();
-      setToken(loginData.token);
-
-      // Create a new session
-      const sessionResponse = await fetch(`${API_URL}/api/sessions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${loginData.token}`
-        },
-        body: JSON.stringify({
-          name: 'Chat Session ' + new Date().toLocaleString()
-        })
-      });
-
-      const sessionData = await sessionResponse.json();
-      setSessionId(sessionData.id);
+      // Generate a session ID
+      const newSessionId = `session-${Date.now()}`;
+      setSessionId(newSessionId);
       
       // Add welcome message
       setMessages([{
         role: 'assistant',
-        content: "Hello! I'm Claude, your AI assistant. How can I help you today?",
+        content: "Hello! I'm Claude via Smart Claude API. How can I help you today?",
         timestamp: new Date()
       }]);
     } catch (err) {
@@ -105,17 +87,14 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch(`${API_URL}/api/smart-claude/chat`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           message: input,
-          sessionId,
-          stream: false,
-          context: messages.slice(-10) // Last 10 messages for context
+          sessionId
         })
       });
 
@@ -159,17 +138,14 @@ export default function ChatPage() {
     setError(null);
 
     try {
-      const response = await fetch(`${API_URL}/api/chat`, {
+      const response = await fetch(`${API_URL}/api/smart-claude/chat`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          'Content-Type': 'application/json'
         },
         body: JSON.stringify({
           message: currentInput,
-          sessionId,
-          stream: true,
-          context: messages.slice(-10)
+          sessionId
         })
       });
 
