@@ -33,6 +33,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+  const isInitialized = useRef(false);
 
   // Auto scroll to bottom
   const scrollToBottom = () => {
@@ -45,27 +46,87 @@ export default function ChatPage() {
 
   // Initialize session on mount
   useEffect(() => {
-    initializeSession();
+    // Prevent double initialization in strict mode
+    if (!isInitialized.current) {
+      isInitialized.current = true;
+      initializeSession();
+    }
+    
+    // Handle page visibility change to restore session
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && !sessionId) {
+        const savedSessionId = sessionStorage.getItem('chatSessionId');
+        if (savedSessionId) {
+          setSessionId(savedSessionId);
+          loadMessagesForSession(savedSessionId);
+        }
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
   }, []);
+
+  const loadMessagesForSession = (sid) => {
+    // Load messages from sessionStorage for this specific session
+    const savedMessages = sessionStorage.getItem(`messages-${sid}`);
+    if (savedMessages) {
+      try {
+        const parsedMessages = JSON.parse(savedMessages);
+        setMessages(parsedMessages);
+      } catch (err) {
+        console.error('Failed to load saved messages:', err);
+      }
+    }
+  };
+
+  const saveMessagesToSession = (msgs, sid) => {
+    // Save messages to sessionStorage for this specific session
+    try {
+      sessionStorage.setItem(`messages-${sid}`, JSON.stringify(msgs));
+    } catch (err) {
+      console.error('Failed to save messages:', err);
+    }
+  };
 
   const initializeSession = async () => {
     try {
+      // Check if there's an existing session in sessionStorage for this tab
+      const existingSessionId = sessionStorage.getItem('chatSessionId');
+      
+      if (existingSessionId) {
+        // Restore existing session
+        setSessionId(existingSessionId);
+        loadMessagesForSession(existingSessionId);
+        return;
+      }
+
       // Test Smart Claude API health
       const healthResponse = await fetch(`${API_URL}/api/smart-claude/health`);
       if (!healthResponse.ok) {
         throw new Error('Smart Claude API is not available');
       }
 
-      // Generate a session ID
-      const newSessionId = `session-${Date.now()}`;
+      // Generate a unique session ID for this tab
+      // Using both timestamp and random string to ensure uniqueness across tabs
+      const tabId = Math.random().toString(36).substring(2, 9);
+      const newSessionId = `session-${Date.now()}-${tabId}`;
       setSessionId(newSessionId);
       
+      // Store session ID in sessionStorage for this tab
+      sessionStorage.setItem('chatSessionId', newSessionId);
+      
       // Add welcome message
-      setMessages([{
+      const welcomeMessages = [{
         role: 'assistant',
         content: "Hello! I'm Claude via Smart Claude API. How can I help you today?",
         timestamp: new Date()
-      }]);
+      }];
+      setMessages(welcomeMessages);
+      saveMessagesToSession(welcomeMessages, newSessionId);
     } catch (err) {
       console.error('Failed to initialize session:', err);
       setError('Failed to initialize chat session');
@@ -81,7 +142,9 @@ export default function ChatPage() {
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    saveMessagesToSession(newMessages, sessionId);
     setInput('');
     setLoading(true);
     setError(null);
@@ -93,7 +156,7 @@ export default function ChatPage() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          message: input,
+          message: userMessage.content,
           sessionId
         })
       });
@@ -111,7 +174,9 @@ export default function ChatPage() {
         usage: data.usage
       };
 
-      setMessages(prev => [...prev, assistantMessage]);
+      const updatedMessages = [...newMessages, assistantMessage];
+      setMessages(updatedMessages);
+      saveMessagesToSession(updatedMessages, sessionId);
     } catch (err) {
       setError(`Failed to send message: ${err.message}`);
       console.error('Chat error:', err);
@@ -130,7 +195,9 @@ export default function ChatPage() {
       timestamp: new Date()
     };
 
-    setMessages(prev => [...prev, userMessage]);
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    saveMessagesToSession(newMessages, sessionId);
     const currentInput = input;
     setInput('');
     setLoading(true);
@@ -158,12 +225,14 @@ export default function ChatPage() {
       let streamContent = '';
 
       // Add placeholder for streaming message
-      setMessages(prev => [...prev, {
+      const streamingMessage = {
         role: 'assistant',
         content: '',
         timestamp: new Date(),
         streaming: true
-      }]);
+      };
+      const messagesWithStreaming = [...newMessages, streamingMessage];
+      setMessages(messagesWithStreaming);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -182,14 +251,15 @@ export default function ChatPage() {
               const json = JSON.parse(data);
               if (json.chunk) {
                 streamContent += json.chunk;
-                // Update the last message
+                // Update the last message and save to session
                 setMessages(prev => {
-                  const newMessages = [...prev];
-                  newMessages[newMessages.length - 1] = {
-                    ...newMessages[newMessages.length - 1],
+                  const updatedMessages = [...prev];
+                  updatedMessages[updatedMessages.length - 1] = {
+                    ...updatedMessages[updatedMessages.length - 1],
                     content: streamContent
                   };
-                  return newMessages;
+                  saveMessagesToSession(updatedMessages, sessionId);
+                  return updatedMessages;
                 });
               }
             } catch (e) {
@@ -199,11 +269,12 @@ export default function ChatPage() {
         }
       }
 
-      // Mark streaming as complete
+      // Mark streaming as complete and save final state
       setMessages(prev => {
-        const newMessages = [...prev];
-        newMessages[newMessages.length - 1].streaming = false;
-        return newMessages;
+        const finalMessages = [...prev];
+        finalMessages[finalMessages.length - 1].streaming = false;
+        saveMessagesToSession(finalMessages, sessionId);
+        return finalMessages;
       });
     } catch (err) {
       setError(`Stream error: ${err.message}`);
@@ -216,14 +287,30 @@ export default function ChatPage() {
   };
 
   const clearChat = () => {
-    setMessages([{
+    const clearedMessages = [{
       role: 'assistant',
       content: "Chat cleared. How can I help you?",
       timestamp: new Date()
-    }]);
+    }];
+    setMessages(clearedMessages);
+    if (sessionId) {
+      saveMessagesToSession(clearedMessages, sessionId);
+    }
   };
 
   const newSession = () => {
+    // Clear current session from sessionStorage
+    if (sessionId) {
+      sessionStorage.removeItem(`messages-${sessionId}`);
+    }
+    sessionStorage.removeItem('chatSessionId');
+    
+    // Reset state
+    setSessionId(null);
+    setMessages([]);
+    isInitialized.current = false;
+    
+    // Initialize new session
     initializeSession();
   };
 

@@ -38,3 +38,10 @@ tsconfig.tsbuildinfo
 
 # Claude settings (contains sensitive API keys)
 .claude
+
+# Temporary files and testing artifacts
+backend/services/*-old.js
+backend/services/*-fixed.js
+backend/test-*.js
+.playwright-mcp/
+*.png

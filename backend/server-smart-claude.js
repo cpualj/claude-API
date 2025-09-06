@@ -4,7 +4,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-// Import new smart service
+// Import smart Claude service
 import smartClaudeCliService from './services/smartClaudeCliService.js';
 
 // Import routes
