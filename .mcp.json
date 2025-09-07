@@ -74,13 +74,26 @@
     },
     "n8n-workflow-builder": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "mcp-n8n-builder"],
+      "command": "cmd",
+      "args": [
+        "/c",
+        "npx",
+        "-y",
+        "mcp-n8n-builder"
+      ],
       "env": {
-        "N8N_HOST": "${N8N_HOST}",
+        "N8N_HOST": "http://localhost:5678",
         "N8N_API_KEY": "${N8N_API_KEY}",
         "OUTPUT_VERBOSITY": "${OUTPUT_VERBOSITY}"
       }
+    },
+    "confluence": {
+      "type": "sse",
+      "url": "https://mcp.atlassian.com/v1/sse"
+    },
+    "jira": {
+      "type": "sse",
+      "url": "https://mcp.atlassian.com/v1/sse"
     }
   }
 }

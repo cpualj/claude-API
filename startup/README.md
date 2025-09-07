@@ -1,31 +1,32 @@
-# Claude API 自动启动配置
+# Claude API 自动启动
 
-## 文件说明
+一个脚本搞定所有！
 
-- `ClaudeAPI.vbs` - 静默启动脚本（用于开机自启）
-- `start-services.bat` - 启动前端和后端服务
-- `stop-services.bat` - 停止所有服务
-- `setup-startup.bat` - 配置开机自启动
+## 🚀 使用方法
 
-## 使用方法
+**双击 `autostart.cmd`**
 
-### 设置开机自启动
-1. 右键点击 `setup-startup.bat`
-2. 选择"以管理员身份运行"
-3. 等待配置完成
+## 📋 功能菜单
 
-### 手动启动服务
-- 双击 `ClaudeAPI.vbs` （静默启动）
-- 或双击 `start-services.bat` （显示窗口）
+1. **安装自动启动** - 设置开机静默启动
+2. **移除自动启动** - 取消开机启动  
+3. **立即启动服务** - 手动启动前后端
+4. **停止服务** - 停止所有服务
+5. **检查状态** - 查看服务运行状态
+6. **退出**
 
-### 停止服务
-- 双击 `stop-services.bat`
+## 📍 服务地址
 
-## 服务端口
-- 前端: http://localhost:3030
-- 后端: http://localhost:3006
+- 前端：http://localhost:3030
+- 后端：http://localhost:3006
 
-## 注意事项
-- 需要安装Node.js和Yarn
-- Claude CLI需要已配置认证
-- 防火墙可能需要允许端口访问
+## 📂 最终文件
+
+```
+startup/
+├── autostart.cmd    # 唯一脚本 - 双击使用
+├── startup.vbs      # 自动生成的静默启动脚本
+└── README.md        # 说明文档
+```
+
+就是这么简单！
